@@ -1,4 +1,4 @@
-*.py[co]
+﻿*.py[co]
 
 # Packages
 *.egg
@@ -34,3 +34,7 @@ htmlcov
 user-config.json
 userapiconfig.py
 usermysql.json
+
+venv/*
+*__pycache__*
+*.pyc
