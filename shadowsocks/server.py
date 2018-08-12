@@ -22,6 +22,7 @@ import sys
 import os
 import logging
 import signal
+import typing
 
 if __name__ == '__main__':
     import inspect
@@ -36,7 +37,7 @@ from shadowsocks import shell, daemon, eventloop, tcprelay, udprelay, \
 def main():
     shell.check_python()
 
-    config = shell.get_config(False)
+    config: typing.Dict[str, any] = shell.get_config(False)
 
     shell.log_shadowsocks_version()
 

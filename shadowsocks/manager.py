@@ -24,9 +24,9 @@ import socket
 import logging
 import json
 import collections
+import typing
 
 from shadowsocks import common, eventloop, tcprelay, udprelay, asyncdns, shell
-
 
 BUF_SIZE = 1506
 STAT_SEND_LIMIT = 50
@@ -34,7 +34,7 @@ STAT_SEND_LIMIT = 50
 
 class Manager(object):
 
-    def __init__(self, config):
+    def __init__(self, config: typing.Dict[str, any]):
         self._config = config
         self._relays = {}  # (tcprelay, udprelay)
         self._loop = eventloop.EventLoop()
@@ -168,7 +168,7 @@ class Manager(object):
                 send_data(r)
                 r.clear()
                 i = 0
-        if len(r) > 0 :
+        if len(r) > 0:
             send_data(r)
         self._statistics.clear()
 
@@ -190,7 +190,7 @@ class Manager(object):
         self._loop.run()
 
 
-def run(config):
+def run(config: typing.Dict[str, any]):
     Manager(config).run()
 
 
@@ -207,9 +207,9 @@ def test():
     eventloop.TIMEOUT_PRECISION = 1
 
     def run_server():
-        config = shell.get_config(True)
+        config: typing.Dict[str, any] = shell.get_config(True)
         config = config.copy()
-        a_config = {
+        a_config: typing.Dict[str, any] = {
             'server': '127.0.0.1',
             'local_port': 1081,
             'port_password': {
@@ -223,7 +223,7 @@ def test():
             'verbose': 2
         }
         config.update(a_config)
-        manager = Manager(config)
+        manager: Manager = Manager(config)
         enc.append(manager)
         manager.run()
 

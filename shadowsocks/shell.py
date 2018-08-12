@@ -23,6 +23,8 @@ import json
 import sys
 import getopt
 import logging
+import typing
+
 from shadowsocks.common import to_bytes, to_str, IPNetwork, PortRange
 from shadowsocks import encrypt
 
@@ -132,9 +134,9 @@ def check_config(config, is_local):
     encrypt.try_cipher(config['password'], config['method'])
 
 
-def get_config(is_local):
+def get_config(is_local) -> typing.Dict[str, any]:
     global verbose
-    config = {}
+    config: typing.Dict[str, any] = {}
     config_path = None
     logging.basicConfig(level=logging.INFO,
                         format='%(levelname)-s: %(message)s')

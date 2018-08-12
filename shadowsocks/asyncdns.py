@@ -23,6 +23,7 @@ import socket
 import struct
 import re
 import logging
+import typing
 
 if __name__ == '__main__':
     import sys
@@ -269,7 +270,7 @@ STATUS_IPV6 = 1
 
 
 class DNSResolver(object):
-    def __init__(self, black_hostname_list=None):
+    def __init__(self, black_hostname_list: typing.Optional[typing.List[bytes]] = None):
         self._loop = None
         self._hosts = {}
         self._hostname_status = {}
@@ -388,7 +389,7 @@ class DNSResolver(object):
             ip = None
             for answer in response.answers:
                 if answer[1] in (QTYPE_A, QTYPE_AAAA) and \
-                                answer[2] == QCLASS_IN:
+                        answer[2] == QCLASS_IN:
                     ip = answer[0]
                     break
             if IPV6_CONNECTION_SUPPORT:
