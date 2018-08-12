@@ -21,10 +21,10 @@ import os
 import sys
 import hashlib
 import logging
+import typing
 
 from shadowsocks import common
 from shadowsocks.obfsplugin import plain, http_simple, obfs_tls, verify, auth, auth_chain, auth_akarin
-
 
 method_supported = {}
 method_supported.update(plain.obfs_map)
@@ -35,20 +35,44 @@ method_supported.update(auth.obfs_map)
 method_supported.update(auth_chain.obfs_map)
 method_supported.update(auth_akarin.obfs_map)
 
-def mu_protocol():
+
+def mu_protocol() -> typing.Set[str]:
     return {"auth_aes128_md5", "auth_aes128_sha1",
             "auth_chain_a", "auth_chain_b", "auth_chain_c", "auth_chain_d", "auth_chain_e", "auth_chain_f",
             "auth_akarin_rand", "auth_akarin_spec_a"}
 
+
 class server_info(object):
     def __init__(self, data):
         self.data = data
+        self.host = None
+        self.port = None
+        self.protocol_param = None
+        self.obfs_param = None
+        self.host = None
+        self.port = None
+        self.users = None
+        self.protocol_param: str = None
+        self.obfs_param: str = ''
+        self.iv: bytes = b''
+        self.recv_iv: bytes = b''
+        self.key_str: bytes = None
+        self.key: bytes = None
+        self.head_len: int = None
+        self.tcp_mss: int = None
+        self.buffer_size: int = None
+        self.overhead: int = None
+        self.users: typing.Optional[dict] = None
+        self.update_user_func: typing.Optional[function] = None
+        self.client = None
+        self.client_port = None
+
 
 class obfs(object):
     def __init__(self, method):
         method = common.to_str(method)
         self.method = method
-        self._method_info = self.get_method_info(method)
+        self._method_info: typing.Optional[tuple] = self.get_method_info(method)
         if self._method_info:
             self.obfs = self.get_obfs(method)
         else:
@@ -63,7 +87,7 @@ class obfs(object):
     def get_server_info(self):
         return self.obfs.get_server_info()
 
-    def get_method_info(self, method):
+    def get_method_info(self, method: str) -> typing.Optional[tuple]:
         method = method.lower()
         m = method_supported.get(method)
         return m
@@ -114,4 +138,3 @@ class obfs(object):
     def dispose(self):
         self.obfs.dispose()
         del self.obfs
-
