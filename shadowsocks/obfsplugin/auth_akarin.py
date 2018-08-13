@@ -297,7 +297,7 @@ class auth_akarin_rand(auth_base):
         v = self.trapezoid_random_float(d)
         return int(v * max_val)
 
-    def send_rnd_data_len(self, buf_size: int, last_hash, random: xorshift128plus) -> int:
+    def send_rnd_data_len(self, buf_size: int, last_hash: bytes, random: xorshift128plus) -> int:
         if buf_size + self.server_info.overhead > self.send_tcp_mss:
             random.init_from_bin_len(last_hash, buf_size)
             return random.next() % 521
@@ -331,7 +331,7 @@ class auth_akarin_rand(auth_base):
         random.init_from_bin(last_hash)
         return random.next() % 127
 
-    def rnd_data(self, buf_size: int, buf: bytes, last_hash, random: xorshift128plus) -> bytes:
+    def rnd_data(self, buf_size: int, buf: bytes, last_hash: bytes, random: xorshift128plus) -> bytes:
         rand_len = self.send_rnd_data_len(buf_size, last_hash, random)
 
         rnd_data_buf = rand_bytes(rand_len)
@@ -345,6 +345,31 @@ class auth_akarin_rand(auth_base):
                 return buf
 
     def pack_client_data(self, buf: bytes) -> bytes:
+        """
+
+        pack_data with_cmd=
+        |ushort(0xff00^ushort(last_client_hash[14:16]))|
+        |ushort(len(origin data)^ushort(last_client_hash[12:14]))|encrypt(origin data)|
+
+        pack_data without_cmd=
+        |ushort(len(origin data)^ushort(last_client_hash[14:16]))|encrypt(origin data)|
+
+        HMAC_key=
+        |user_key|uint(last_pack_id)|
+
+        next_client_hash=
+        HMAC_sign(key:(HMAC_key), be sign data:(pack_data))
+
+        next_pack_id=
+        uint((pack_id + 1)&0xFFFFFFFF)
+
+        pack_out=
+        |(pack_data)|next_client_hash|
+
+
+        :param buf: bytes   origin data
+        :return: bytes      packed data
+        """
         buf = self.encryptor.encrypt(buf)
         if self.send_back_cmd:
             cmd_len = 2
@@ -359,12 +384,33 @@ class auth_akarin_rand(auth_base):
             length = len(buf) ^ struct.unpack('<H', self.last_client_hash[14:])[0]
             data = struct.pack('<H', length) + data
         mac_key = self.user_key + struct.pack('<I', self.pack_id)
-        self.last_client_hash = hmac.new(mac_key, data, self.hashfunc).digest()
+        self.last_client_hash: bytes = hmac.new(mac_key, data, self.hashfunc).digest()
         data += self.last_client_hash[:2]
         self.pack_id = (self.pack_id + 1) & 0xFFFFFFFF
         return data
 
-    def pack_server_data(self, buf):
+    def pack_server_data(self, buf: bytes) -> bytes:
+        """
+
+        pack_data=
+        |ushort(len(origin data)^ushort(last_client_hash[14:16]))|encrypt(origin data)|
+
+        HMAC_key=
+        |user_key|uint(last_pack_id)|
+
+        next_client_hash=
+        HMAC_sign(key:(HMAC_key), be sign data:(pack_data))
+
+        next_pack_id=
+        uint((pack_id + 1)&0xFFFFFFFF)
+
+        pack_out=
+        |(pack_data)|next_client_hash|
+
+
+        :param buf: bytes   origin data
+        :return: bytes      packed data
+        """
         buf = self.encryptor.encrypt(buf)
         data = self.rnd_data(len(buf), buf, self.last_server_hash, self.random_server)
         mac_key = self.user_key + struct.pack('<I', self.pack_id)
@@ -377,8 +423,79 @@ class auth_akarin_rand(auth_base):
         self.pack_id = (self.pack_id + 1) & 0xFFFFFFFF
         return data
 
-    def pack_auth_data(self, auth_data, buf):
+    def pack_auth_data(self, auth_data: bytes, buf: bytes) -> bytes:
+        """
+        ### construct the client first&auth pack
+
+        plain_auth_data=
+        |auth_data|ushort(server_info.overhead)|ushort(tcp_mss)|
+
+        check_head 1st_pair=
+        |rand_bytes(4)|
+
+        mac_key=
+        |server_info.iv|server_info.key|
+
+        client_hash=
+        |HMAC_sign(mac_key, data:(check_head 1st_pair))|
+
+        check_head 2ed_pair=
+        |client_hash[:8]|
+
+        check_head=
+        |(check_head 1st_pair)|(check_head 2ed_pair)|
+
+        user_origin_id=
+        |(uid in protocol_param)| or |rand_bytes(4)|
+
+        user_encoded_id=
+        |uint_bytes(uint_number(uid)^uint_number(client_hash[8:12]))|
+        {== equal as ==|uint_bytes(uid)^client_hash[8:12]|}
+
+        encryptor_1_key=
+        |bytes(base64(user_key))|protocol_salt|
+
+        encrypted_auth_data=
+        |user_encoded_id|
+        |encryptor(
+            key:(encryptor_1_key),
+            data:(plain_auth_data),
+            mode:('aes-128-cbc'),
+            encipher_vi:(b'\x00' * 16)
+        )[16:]|
+
+        server_hash=
+        |HMAC_sign(user_key, encrypted_auth_data)|
+
+        pack_out=
+        |check_head|encrypted_auth_data|server_hash[:4]|pack_client_data(buf)|
+
+        connect_encryptor_key=
+        |bytes(base64(user_key))|bytes(base64(client_hash[0:16]))|
+
+        connect_encryptor_encipher_vi=
+        |client_hash[:8]|
+
+        connect_encryptor_decipher_vi=
+        |server_hash[:8]|
+
+        connect_encryptor=
+        |encryptor(
+            key:(connect_encryptor_key),
+            data:(plain_auth_data),
+            mode:('chacha20'),
+            encipher_vi:(connect_encryptor_encipher_vi),
+            decipher_vi:(connect_encryptor_decipher_vi)
+        )|
+
+        :param auth_data:
+        :param buf:
+        :return:
+        """
         data = auth_data
+        # TODO FIX THIS   this need be a little ending encode ushort ,
+        # TODO it need same as decoder on `server_post_decrypt()` for recv_tcp_mss
+        # a random size tcp max size for mss exchange when c->s
         self.send_tcp_mss = struct.unpack('>H', rand_bytes(2))[0] % 1024 + 400
         data = data + (struct.pack('<H', self.server_info.overhead) + struct.pack('<H', self.send_tcp_mss))
         mac_key = self.server_info.iv + self.server_info.key
@@ -387,35 +504,62 @@ class auth_akarin_rand(auth_base):
         self.last_client_hash = hmac.new(mac_key, check_head, self.hashfunc).digest()
         check_head += self.last_client_hash[:8]
 
+        # TODO FIX THIS   generate default user id before `if`
+        # if exist, get the user origin_id/key from protocol_param
+        # otherwise, use `rand_bytes(4)` as default user origin_id, the global protocol key(password) as user key
         if b':' in to_bytes(self.server_info.protocol_param):
             try:
                 items = to_bytes(self.server_info.protocol_param).split(b':')
                 self.user_key = items[1]
-                uid = struct.pack('<I', int(items[0]))
+                uid: bytes = struct.pack('<I', int(items[0]))
             except:
-                uid = rand_bytes(4)
+                uid: bytes = rand_bytes(4)
         else:
-            uid = rand_bytes(4)
+            uid: bytes = rand_bytes(4)
         if self.user_key is None:
             self.user_key = self.server_info.key
 
+        # use user key to initial a aes-128-cbc encryptor, vi is 16-bytes 0x00
+        # and use it to encrypt plain auth data
         encryptor = encrypt.Encryptor(
             to_bytes(base64.b64encode(self.user_key)) + self.salt, 'aes-128-cbc', b'\x00' * 16)
 
         uid = struct.unpack('<I', uid)[0] ^ struct.unpack('<I', self.last_client_hash[8:12])[0]
         uid = struct.pack('<I', uid)
         data = uid + encryptor.encrypt(data)[16:]
+
         self.last_server_hash = hmac.new(self.user_key, data, self.hashfunc).digest()
         data = check_head + data + self.last_server_hash[:4]
+
+        # use user_key and client_hash to initial a chacha20 encryptor as connect encryptor, vi is client_hash[:8]
         self.encryptor = encrypt.Encryptor(
             to_bytes(base64.b64encode(self.user_key)) + to_bytes(base64.b64encode(self.last_client_hash)), 'chacha20',
             self.last_client_hash[:8])
+        # set encryptor's iv_sent state to True, to make it not place vi at front of first encrypted pack
+        # *** because the receive point can re-construct encipher.vi from client_hash[:8]
+        #     client_hash[:8] are the check_head[4:8]
+        #     client_hash[0:16] are calc from `HMAC(mac_key, check_head[0:4])`
+        #     mac_key=server.vi+server.key
+        # so , we don't need send encryptor's encipher's vi
         self.encryptor.encrypt(b'')
+        # use server_hash[:8] as encryptor's decipher's iv to init encryptor's decipher
+        # *** because the receive point can re-construct decipher.vi from server_hash[:8]
+        #     server_hash[0:16] can calc from `HMAC(user_key, encrypted_auth_data)`
+        #     server_hash[:4] are the verifier for the `user_key` and `encrypted_auth_data`,
+        #     it place back at encrypted_auth_data
+        # same as above , we dont need send decipher's vi
         self.encryptor.decrypt(self.last_server_hash[:8])
         return data + self.pack_client_data(buf)
 
-    def auth_data(self):
-        utc_time = int(time.time()) & 0xFFFFFFFF
+    def auth_data(self) -> bytes:
+        """
+
+        auth_data=
+        |uint(utc_time)|connection_id:(rand_bytes(4))|uint(connection_id)|
+
+        :return: bytes    auth data
+        """
+        utc_time: int = int(time.time()) & 0xFFFFFFFF
         if self.server_info.data.connection_id > 0xFF000000:
             self.server_info.data.local_client_id = b''
         if not self.server_info.data.local_client_id:
