@@ -17,6 +17,8 @@
 from __future__ import absolute_import, division, print_function, \
     with_statement
 
+import typing
+
 from ctypes import c_char_p, c_int, c_long, byref, \
     create_string_buffer, c_void_p
 
@@ -78,7 +80,7 @@ def load_cipher(cipher_name):
     return None
 
 
-def rand_bytes(length):
+def rand_bytes(length: int) -> bytes:
     if not loaded:
         load_openssl()
     buf = create_string_buffer(length)
