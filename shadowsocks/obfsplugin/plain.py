@@ -96,6 +96,13 @@ class plain(object):
         pass
 
     def get_head_size(self, buf: bytes, def_value: int) -> int:
+        """
+        get size From SOCKS5 head type info
+
+        :param buf: bytes       the header from SOCKS5
+        :param def_value: int   if cannot detect type
+        :return:  the header really size
+        """
         if len(buf) < 2:
             return def_value
         head_type = ord(buf[0]) & 0x7
