@@ -572,15 +572,27 @@ class auth_akarin_rand(auth_base):
                          struct.pack('<I', self.server_info.data.connection_id)])
 
     def on_recv_auth_data(self, utc_time):
+        # TODO implement
         pass
 
-    def client_pre_encrypt(self, buf):
+    def client_pre_encrypt(self, buf: bytes) -> bytes:
+        """
+
+        header=
+        |packed data(auth_data)|
+
+        ret_data=
+        |header:(if first pack)|packed data(buf)|
+
+        :param buf: bytes    plain data
+        :return: bytes     encrypted data
+        """
         ret = b''
         ogn_data_len = len(buf)
         if not self.has_sent_header:
             head_size = self.get_head_size(buf, 30)
             datalen = min(len(buf), random.randint(0, 31) + head_size)
-            ret += self.pack_auth_data(self.auth_data(), buf[:datalen])
+            ret += self.pack_auth_data(self.auth_data(), buf[:datalen])  # TODO buf[:datalen] may overflow
             buf = buf[datalen:]
             self.has_sent_header = True
         while len(buf) > self.unit_len:
