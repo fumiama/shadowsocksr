@@ -64,7 +64,10 @@ def find_library(possible_lib_names, search_symbol, library_name):
         if os.name == "nt":
             paths.extend(find_library_nt(name))
         else:
-            path = ctypes.util.find_library(name)
+            try:
+                path = ctypes.util.find_library(name)
+            except FileNotFoundError:
+                continue
             if path:
                 paths.append(path)
 
